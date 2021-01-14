@@ -1,54 +1,116 @@
 import time
-from m5stack import *
+import random
+import os
+import uos
+import wave
+from m5stack import lcd, buttonC, buttonB, buttonA
+from machine import I2S
 
 
-class Sounds:
+i2s = I2S(  mode = I2S.MODE_MASTER | I2S.MODE_TX | I2S.MODE_DAC_BUILT_IN,
+            rate = 16000,
+            bits = 16,
+            channel_format = I2S.CHANNEL_ONLY_RIGHT,
+            data_format = I2S.FORMAT_I2S_MSB)
 
-  def __init__(self, volume=2):
-    speaker.volume(volume)
-    speaker.tone(freq=1000, duration=200)
 
-  def beeps(self, n_beeps, beep_time, pause_time):
-    for i in range(n_beeps):
-      speaker.tone(freq=1000, duration=50)
-      time.sleep(beep_time)
-      speaker.tone(freq=1, duration=50)
-      time.sleep(pause_time)
-    # speaker.tone(freq=1, duration=50)
+def play_random_file(directory, volume=100):
+  # Mount SD
+  os.mountsd()
+
+  # Get random file
+  files = os.listdir(directory)
+  rand_idx = random.randint(0, len(files)-1)
+  fname = directory + '/' + files[rand_idx]
+
+  # Open file and setup I2S
+  wav = wave.open(fname)
+  i2s.set_dac_mode(I2S.DAC_RIGHT_EN)
+  i2s.sample_rate(wav.getframerate())
+  i2s.bits(wav.getsampwidth() * 8)
+  i2s.nchannels(wav.getnchannels()) 
+  i2s.volume(volume)
+
+  # Play file
+  while True:
+    data = wav.readframes(1024)
+    if len(data) > 0:
+      i2s.write(data)
+      print('.', end='')
+    else:
+      wav.close()
+      break
+    if buttonC.isPressed():
+      wav.close()
+      break;
+  
+  # Stop I2S
+  i2s.stop()
+  i2s.set_dac_mode(I2S.DAC_DISABLE)  # Get rid of the speaker noise
+
+  # Unmount SD because lcd interfers with it (both are on SPI)
+  os.umountsd()
 
 
 class Timer:
 
-  def __init__(self):
+  def __init__(self, timer_A, timer_B):
+    # Parameters
+    self.timer_A = timer_A
+    self.timer_B = timer_B
+
     # Variables
     self.timer_end = None
-    self.last_time_printed = None
+    self.last_time_printed = 0
     self.timer_running = False
-
-    # Sounds
-    self.sounds = Sounds(volume=0.2)
+    self.languages = []
+    self.language_idx = 0
+    self.language_dir = None
+    self.pause = False
 
     # Set font
-    lcd.font(lcd.FONT_7seg)
-    lcd.attrib7seg(20, 20, lcd.WHITE, lcd.BLACK)
+    self.set_timer_font()
     lcd.clear()
 
     # Button setup
     buttonA.wasReleased(self.on_A_released)
     buttonB.wasReleased(self.on_B_released)
+    buttonC.wasReleased(self.on_C_released)
 
     # Initialise variables
-    self.stop(silent=True)
-
-  def stop(self, silent=False):
     self.timer_end = time.time()
     self.timer_running = False
     self.print_time_left(0)
-    if not silent:
-      pass
-      # self.sounds.beeps(3, 0.5, 1.0)
 
+    # Read info from SD Card. Mount and unmount because it interfers with lcd SPI
+    os.mountsd()
+    self.languages = os.listdir('/sd')
+    self.language_dir = '/sd/' + self.languages[self.language_idx]
+    os.umountsd()
+    self.print_language()
+
+  def set_brightness(self, val): # From 0 to 100
+    lcd.setBrightness(val)
+
+  def set_timer_font(self):
+    lcd.font(lcd.FONT_7seg)
+    lcd.attrib7seg(20, 20, lcd.WHITE, lcd.BLACK)
+
+  def print_language(self):
+    lcd.clear()
+    lcd.font(lcd.FONT_DejaVu24)
+    lcd.print(self.languages[self.language_idx], 232, lcd.BOTTOM)
+    self.set_timer_font()
+    self.print_time_left(self.last_time_printed)
+
+  def stop(self):
+    self.timer_end = time.time()
+    self.timer_running = False
+    self.print_time_left(0)
+    play_random_file(self.language_dir)
+    
   def start(self, t_sec):
+    play_random_file(self.language_dir)
     self.timer_end = time.time() + t_sec
     self.timer_running = True
 
@@ -61,10 +123,23 @@ class Timer:
     self.last_time_printed = t_sec
 
   def on_A_released(self):
-    self.start(5)
+    self.start(self.timer_A)
 
   def on_B_released(self):
-    self.start(2*60)
+    self.start(self.timer_B)
+
+  def on_C_released(self):
+    # Switch language directory
+    self.language_idx = self.language_idx + 1
+    if self.language_idx >= len(self.languages):
+      self.language_idx = 0
+    self.language_dir = '/sd/' + self.languages[self.language_idx]
+
+    # Print language
+    self.print_language()
+
+    # Play language sample
+    play_random_file(self.language_dir)
 
   def run(self):
     # Loop
@@ -84,5 +159,7 @@ class Timer:
 
 
 if __name__ == "__main__":
-  timer = Timer()
+  timer = Timer(timer_A=25*60, timer_B=55*60)
   timer.run()
+
+
