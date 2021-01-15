@@ -6,12 +6,13 @@ import wave
 from m5stack import lcd, buttonC, buttonB, buttonA
 from machine import I2S
 
+random.seed(int(time.time()))
 
-i2s = I2S(  mode = I2S.MODE_MASTER | I2S.MODE_TX | I2S.MODE_DAC_BUILT_IN,
-            rate = 16000,
-            bits = 16,
-            channel_format = I2S.CHANNEL_ONLY_RIGHT,
-            data_format = I2S.FORMAT_I2S_MSB)
+i2s = I2S(mode = I2S.MODE_MASTER | I2S.MODE_TX | I2S.MODE_DAC_BUILT_IN,
+          rate = 16000,
+          bits = 16,
+          channel_format = I2S.CHANNEL_ONLY_RIGHT,
+          data_format = I2S.FORMAT_I2S_MSB)
 
 
 def play_random_file(directory, volume=100):
@@ -58,6 +59,7 @@ class Timer:
     # Parameters
     self.timer_A = timer_A
     self.timer_B = timer_B
+    self.dim_brightness = 25
 
     # Variables
     self.timer_end = None
@@ -66,11 +68,12 @@ class Timer:
     self.languages = []
     self.language_idx = 0
     self.language_dir = None
-    self.pause = False
+    self.current_brightness = 100
 
-    # Set font
+    # Set up display
     self.set_timer_font()
     lcd.clear()
+    self.set_brightness(self.dim_brightness)
 
     # Button setup
     buttonA.wasReleased(self.on_A_released)
@@ -90,7 +93,9 @@ class Timer:
     self.print_language()
 
   def set_brightness(self, val): # From 0 to 100
-    lcd.setBrightness(val)
+    if val != self.current_brightness:
+      lcd.setBrightness(val)
+      self.current_brightness = val
 
   def set_timer_font(self):
     lcd.font(lcd.FONT_7seg)
@@ -107,9 +112,13 @@ class Timer:
     self.timer_end = time.time()
     self.timer_running = False
     self.print_time_left(0)
-    play_random_file(self.language_dir)
-    
+    for i in range(3):
+      play_random_file(self.language_dir)
+      time.sleep(2)
+    self.set_brightness(self.dim_brightness)
+
   def start(self, t_sec):
+    self.set_brightness(100)
     play_random_file(self.language_dir)
     self.timer_end = time.time() + t_sec
     self.timer_running = True
