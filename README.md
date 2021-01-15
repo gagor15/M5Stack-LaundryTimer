@@ -9,3 +9,6 @@ WAV file format:
 * Codec: PCM S16 LE (s16l)  
 * Smaple rate: 48000 Hz  
 * Bits per sample: 16  
+
+Record WAV file with `arecord`:  
+`arecord -f dat filename.wav`  
